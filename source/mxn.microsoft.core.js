@@ -48,7 +48,8 @@ Mapstraction: {
 		if(this.options.enableScrollWheelZoom){
 			map.enableContinuousZoom();
 			map.enableScrollWheelZoom();
-		}		
+		}
+		
 	},
 
 	resizeTo: function(width, height){	
@@ -114,15 +115,60 @@ Mapstraction: {
 	
 	addMarker: function(marker, old) {
 		var map = this.maps[this.api];
-		marker.pinID = "mspin-"+new Date().getTime()+'-'+(Math.floor(Math.random()*Math.pow(2,16)));
 		var pin = marker.toProprietary(this.api);
-		
 		map.AddShape(pin);
-		//give onclick event
+		marker.pinID = pin.GetID();
+		if(marker.hoverIconUrl){
+			map.AttachEvent("onmouseover", function(event) {
+                		var map = this.maps[this.api];
+				if(event.elementID){
+				    var obj =  document.getElementById(event.elementID);
+				    var children =  document.getElementById(event.elementID).getElementsByTagName('img');
+				     if (children) {
+				         var shape = map.GetShapeByID(event.elementID);
+				         if (shape.mapstraction_marker) {
+				             for (i = 0; i < children.length; i++ ) {
+				                var img = children[i];
+				                if(img.src.indexOf(shape.mapstraction_marker.iconUrl,0) > 0) {
+				                    img.src =  shape.mapstraction_marker.hoverIconUrl
+				                    break;
+				                }
+				             }
+				         }
+				     }
+				     // Returning true disabled the default behavior of opening the info box onmouseover
+				     // use showBubble on Mapstraction marker to implement if this behavior is desired
+				     // This change was made to allow the control of the mouse bubble with click events
+				    return true;
+				}
+			}.bind(this));
+			 map.AttachEvent("onmouseout", function(event) {
+		         var map = this.maps[this.api];
+		         if(event.elementID){
+		             var children =  document.getElementById(event.elementID).getElementsByTagName('img');
+		             if (children) {
+		                 var shape = map.GetShapeByID(event.elementID);
+		                 if (shape.mapstraction_marker) {
+		                     for (i = 0; i < children.length; i++ ) {
+		                        var img = children[i];
+		                        if(img.src.indexOf(shape.mapstraction_marker.hoverIconUrl,0) > 0) {
+		                            img.src =  shape.mapstraction_marker.iconUrl
+		                            break;
+		                        }
+		                     }
+		                 }
+		             }
+		         }
+		        // Returning true disabled the default behavior of closing the info box onmouseout
+		         // use showBubble on Mapstraction marker to implement if this behavior is desired
+		         // This change was made to allow the control of the mouse bubble with click events
+		        return true;
+			}.bind(this));
+		}
+        	//give onclick event
 		//give on double click event
 		//give on close window
 		//return the marker
-				
 		return pin;
 	},
 
@@ -308,46 +354,86 @@ Marker: {
 	
 	toProprietary: function() {
 		var mmarker = new VEShape(VEShapeType.Pushpin, this.location.toProprietary('microsoft'));
-		mmarker.SetTitle(this.labelText);
-		mmarker.SetDescription(this.infoBubble);
-		
-		if (this.iconUrl) {
-			var customIcon = new VECustomIconSpecification();
-			customIcon.Image = this.iconUrl;
-			// See this article on how to patch 6.2 to correctly render offsets.
-			// http://social.msdn.microsoft.com/Forums/en-US/vemapcontroldev/thread/5ee2f15d-09bf-4158-955e-e3fa92f33cda?prof=required&ppud=4
-			if (this.iconAnchor) {
-			   customIcon.ImageOffset = new VEPixel(-this.iconAnchor[0], -this.iconAnchor[1]);
-			} 
-			else if (this.iconSize) {
-			   customIcon.ImageOffset = new VEPixel(-this.iconSize[0]/2, -this.iconSize[1]/2);
-			}
-			mmarker.SetCustomIcon(customIcon);	
+		mmarker.SetTitle(this.infoBubble);
+		var customIcon = new VECustomIconSpecification();
+		var markerOffsetx = 0;
+		var markerOffsety = 0;
+		var shadowOffsetx = 0;
+		var shadowOffsety = 0;
+		if (this.iconAnchor) {
+		    markerOffsetx = -this.iconAnchor[0];
+		    markerOffsety = -this.iconAnchor[1];
+		} else if (this.iconSize){
+		    markerOffsetx = -this.iconSize[0]/2;
+		    markerOffsety = -this.iconSize[1]/2;
 		}
-		
+		if (this.iconShadowUrl) {
+		    if (this.iconAnchor) {
+		        shadowOffsetx = -this.iconAnchor[0];
+		        shadowOffsety = -this.iconAnchor[1];
+		    } else if (this.iconShadowSize){
+		        shadowOffsetx = -this.iconShadowSize[0]/2;
+		        shadowOffsety = -this.iconShadowSize[1]/2;
+		    }
+		}
+		var customHTML = [];
+		customHTML.push("<div style='position:relative'>");
+		if (this.iconShadowUrl) {
+		    customHTML.push(" <div style='position:absolute;left:" + shadowOffsetx + "px;top:" +  shadowOffsety + "px;'>");
+		    customHTML.push("<img src='");
+		    customHTML.push(this.iconShadowUrl);
+		    customHTML.push("' border='0' />");
+		    customHTML.push("</div>");
+		}
+		customHTML.push(" <div style='position:absolute;left:" + markerOffsetx + "px;top:" +  markerOffsety + "px;'>");
+		customHTML.push("<img src='");
+		customHTML.push(this.iconUrl);
+		customHTML.push("' id='");
+		customHTML.push(this.marker);
+		customHTML.push("' ");
+		customHTML.push(" border='0' />");
+		customHTML.push("</div>");
+		customHTML.push("</div>");
+		customIcon.CustomHTML = customHTML.join("");
+		mmarker.SetCustomIcon(customIcon);
+
 		return mmarker;
 	},
 
 	openBubble: function() {
-		if (!this.map) {
-			throw 'Marker must be added to map in order to display infobox';
+		if(this.proprietary_marker.iid){
+		    var shape = this.map.GetShapeByID(this.proprietary_marker.iid);
+		    if (shape) {
+		        this.map.ShowInfoBox(shape);
+		    }
 		}
-		this.map.ShowInfoBox(this.proprietary_marker);
 	},
 	
 	closeBubble: function() {
-		if (!this.map) {
-			throw 'Marker must be added to map in order to display infobox';
+		if(this.proprietary_marker.iid){
+		    var shape = this.map.GetShapeByID(this.proprietary_marker.iid);
+		    if (shape) {
+		        this.map.HideInfoBox(shape);
+		    }
 		}
-		this.map.HideInfoBox();
 	},
 
 	hide: function() {
-		this.proprietary_marker.Hide();
+		var shape = this.proprietary_marker;
+		if (shape.GetType().equals(VEShapeType.Pushpin)) {
+		    shape.Hide();
+		} else {
+		    shape.HideIcon();
+		}
 	},
 
 	show: function() {
-		this.proprietary_marker.Show();
+		var shape = this.proprietary_marker;
+		if (shape.GetType().equals(VEShapeType.Pushpin)) {
+		    shape.Show();
+		} else {
+		    shape.ShowIcon();
+		}
 	},
 
 	update: function() {
